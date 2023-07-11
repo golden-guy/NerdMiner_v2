@@ -17,6 +17,8 @@
 
 //3 seconds WDT
 #define WDT_TIMEOUT 3
+//90 seconds WDT for miner task
+#define WDT_MINER_TIMEOUT 90
 OneButton button1(PIN_BUTTON_1);
 OneButton button2(PIN_BUTTON_2);
 
@@ -53,6 +55,7 @@ void setup()
   Serial.setTimeout(0);
   delay(100);
 
+  esp_task_wdt_init(WDT_MINER_TIMEOUT, true);
   // Idle task that would reset WDT never runs, because core 0 gets fully utilized
   disableCore0WDT();
   //disableCore1WDT();
@@ -126,7 +129,9 @@ void setup()
   // Start stratum tasks
   sprintf(name, "(%s)", "Miner0");
   //BaseType_t res = xTaskCreatePinnedToCore(runMiner, "0", 10000, (void*)name, 1, NULL, 0);
-  BaseType_t res3 = xTaskCreatePinnedToCore(runMiner, "0", 10000, (void*)name, 1,NULL, 0);
+  TaskHandle_t minerTask;
+  BaseType_t res3 = xTaskCreatePinnedToCore(runMiner, "0", 10000, (void*)name, 1, &minerTask, 0);
+  esp_task_wdt_add(minerTask);
   //sprintf(name, "(%s)", "Miner1");
   //BaseType_t res4 = xTaskCreatePinnedToCore(runMiner, "1", 10000, (void*)name, 1,NULL, 0);
   //Serial.printf("Starting %s %s!\n", "1", res3 == pdPASS? "successful":"failed");

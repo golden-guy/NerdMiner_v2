@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <algorithm>
+#include <esp_task_wdt.h>
 #include <TFT_eSPI.h> // Graphics and font library for ILI9341 driver chip
 #include <wolfssl/wolfcrypt/sha256.h>
 #include "media/Free_Fonts.h"
@@ -309,6 +310,8 @@ void runMiner(void * name){
     }
 
     uint32_t duration = micros() - startT;
+    if (esp_task_wdt_reset() == ESP_OK)
+      Serial.print(">>> Resetting watchdog timer");
   }
 }
 
