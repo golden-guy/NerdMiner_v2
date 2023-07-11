@@ -182,12 +182,13 @@ void runStratumWorker(void *name) {
           case MINING_NOTIFY:         if(parse_mining_notify(line, mJob)){
                                           //Increse templates readed
                                           templates++;
-                                          //Stop miner current job
+                                          //Stop miner current jobs
                                           mMiner.inRun = false;
-                                          //Prepare data for new job
+                                          //Prepare data for new jobs
                                           mMiner=calculateMiningData(mWorker,mJob);
                                           mMiner.poolDifficulty = currentPoolDifficulty;
                                           mMiner.newJob = true;
+                                          mMiner.newJob2 = true;
                                           //Give new job to miner
 
                                       }
@@ -211,17 +212,22 @@ void runStratumWorker(void *name) {
 
 //This works only with one thread, TODO -> Class or miner_data for each thread
 
-void runMiner(void * name){
-  
+void runMiner(void * task_id) {
+
+  unsigned int miner_id = (uint32_t)task_id;
   while(1){
 
     //Wait new job
     while(1){
-      if(mMiner.newJob==true) break;
+      if(mMiner.newJob==true || mMiner.newJob2==true) break;
       vTaskDelay(100 / portTICK_PERIOD_MS); //Small delay
     }
 
-    mMiner.newJob = false; //Clear newJob flag
+    if(mMiner.newJob)
+      mMiner.newJob = false; //Clear newJob flag
+    else if(mMiner.newJob2)
+      mMiner.newJob2 = false; //Clear newJob flag
+
     mMiner.inRun = true; //Set inRun flag
 
     //Prepare Premining data
@@ -235,6 +241,8 @@ void runMiner(void * name){
 
     // search a valid nonce
     unsigned long nonce = TARGET_NONCE - MAX_NONCE;
+    // split up odd/even nonces between miner tasks
+    nonce += miner_id;
     uint32_t startT = micros();
     unsigned char *header64 = mMiner.bytearray_blockheader + 64;
     Serial.println(">>> STARTING TO HASH NONCES");
@@ -255,7 +263,8 @@ void runMiner(void * name){
         Serial.println("");   */
       
       hashes++;
-      if (nonce++> TARGET_NONCE) break; //exit
+      nonce += 2;
+      if (nonce > TARGET_NONCE) break; //exit
       if(!mMiner.inRun) { Serial.println ("MINER WORK ABORTED >> waiting new job"); break;}
 
       // check if 16bit share
@@ -286,9 +295,9 @@ void runMiner(void * name){
 
         // check if valid header
       if(checkValid(hash, mMiner.bytearray_target)){
-        Serial.printf("[WORKER] %s CONGRATULATIONS! Valid completed with nonce: %d | 0x%x\n", (char *)name, nonce, nonce);
+        Serial.printf("[WORKER] %d CONGRATULATIONS! Valid completed with nonce: %d | 0x%x\n", miner_id, nonce, nonce);
         valids++;
-        Serial.printf("[WORKER]  %s  Submiting work valid!\n", (char *)name);
+        Serial.printf("[WORKER]  %d  Submiting work valid!\n", miner_id);
         // STEP 3: Submit mining job
         tx_mining_submit(client, mWorker, mJob, nonce);
         client.stop();
