@@ -17,8 +17,8 @@
 
 //3 seconds WDT
 #define WDT_TIMEOUT 3
-//90 seconds WDT for miner task
-#define WDT_MINER_TIMEOUT 90
+// 120 seconds WDT for miner tasks
+#define WDT_MINER_TIMEOUT 120
 OneButton button1(PIN_BUTTON_1);
 OneButton button2(PIN_BUTTON_2);
 

@@ -117,7 +117,9 @@ void runStratumWorker(void *name) {
   while(true) {
       
     if(WiFi.status() != WL_CONNECTED){
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      // WiFi is disconnected, so reconnect now
+      WiFi.reconnect();
+      vTaskDelay(5000 / portTICK_PERIOD_MS);
       continue;
     } 
 
@@ -222,6 +224,7 @@ void runMiner(void * task_id) {
       if(mMiner.newJob==true || mMiner.newJob2==true) break;
       vTaskDelay(100 / portTICK_PERIOD_MS); //Small delay
     }
+    vTaskDelay(10 / portTICK_PERIOD_MS); //Small delay to join both mining threads
 
     if(mMiner.newJob)
       mMiner.newJob = false; //Clear newJob flag
