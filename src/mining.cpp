@@ -112,7 +112,7 @@ void runStratumWorker(void *name) {
 
   // connect to pool
   
-  float currentPoolDifficulty = atof(DEFAULT_DIFFICULTY);
+  double currentPoolDifficulty = DEFAULT_DIFFICULTY;
 
   while(true) {
       
