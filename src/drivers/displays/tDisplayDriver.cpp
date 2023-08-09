@@ -17,6 +17,9 @@ OpenFontRender render;
 TFT_eSPI tft = TFT_eSPI();                  // Invoke library, pins defined in User_Setup.h
 TFT_eSprite background = TFT_eSprite(&tft); // Invoke library sprite
 
+//screen brightness
+byte brightness = 255;
+
 void tDisplay_Init(void)
 {
   tft.init();
@@ -42,9 +45,14 @@ void tDisplay_Init(void)
 
 void tDisplay_AlternateScreenState(void)
 {
-  int screen_state = digitalRead(TFT_BL);
   Serial.println("Switching display state");
-  digitalWrite(TFT_BL, !screen_state);
+  if (brightness == 255) {
+    brightness = 0;
+  } else {
+    brightness += 85;
+  }
+  analogWrite(TFT_BL, brightness);
+  Serial.printf(">>> Brightness changed to %d\n", brightness);
 }
 
 void tDisplay_AlternateRotation(void)
