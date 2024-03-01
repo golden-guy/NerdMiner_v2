@@ -7,13 +7,14 @@
 #define SCREEN_MINING   0
 #define SCREEN_CLOCK    1
 #define SCREEN_GLOBAL   2
+#define NO_SCREEN       3   //Used when board has no TFT
 
 //Time update period
 #define UPDATE_PERIOD_h   5
 
 //API BTC price
-#define getBTCAPI "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-#define UPDATE_BTC_min   5
+#define getBTCAPI "https://api.blockchain.com/v3/exchange/tickers/BTC-USD"
+#define UPDATE_BTC_min   1
 
 //API Block height
 #define getHeightAPI "https://mempool.space/api/blocks/tip/height"
@@ -25,15 +26,29 @@
 #define getFees "https://mempool.space/api/v1/fees/recommended"
 #define UPDATE_Global_min 2
 
+//API public-pool.io
+// https://public-pool.io:40557/api/client/btcString
+#define getPublicPool "https://public-pool.io:40557/api/client/" // +btcString
+#define UPDATE_POOL_min   1
+
+#define NEXT_HALVING_EVENT 840000
+#define HALVING_BLOCKS 210000
+
+enum NMState {
+  NM_waitingConfig,
+  NM_Connecting,
+  NM_hashing
+};
 
 typedef struct{
   uint8_t screen;
   bool rotation;
+  NMState NerdStatus;
 }monitor_data;
 
 typedef struct{
   String globalHash; //hexahashes
-  String lastBlock;
+  String currentBlock;
   String difficulty;
   String blocksHalving;
   float progressPercent;
@@ -41,10 +56,65 @@ typedef struct{
   int halfHourFee;
 }global_data;
 
+typedef struct {
+  String completedShares;
+  String totalMHashes;
+  String totalKHashes;
+  String currentHashRate;
+  String templates;
+  String bestDiff;
+  String timeMining;
+  String valids;
+  String temp;
+  String currentTime;
+}mining_data;
+
+typedef struct {
+  String completedShares;
+  String totalKHashes;
+  String currentHashRate;
+  String btcPrice;
+  String blockHeight;
+  String currentTime;  
+  String currentDate;
+}clock_data;
+
+typedef struct {
+  String currentHashRate;
+  String valids;
+  unsigned long currentHours;
+  unsigned long currentMinutes;
+  unsigned long currentSeconds;
+}clock_data_t;
+
+typedef struct {
+  String completedShares;
+  String totalKHashes;
+  String currentHashRate;
+  String btcPrice;
+  String currentTime;
+  String halfHourFee;
+  String netwrokDifficulty;
+  String globalHashRate;
+  String blockHeight;
+  float progressPercent;
+  String remainingBlocks;
+}coin_data;
+
+typedef struct{
+  int workersCount;       // Workers count, how many nerdminers using your address
+  String workersHash;     // Workers Total Hash Rate
+  String bestDifficulty;  // Your miners best difficulty
+}pool_data;
+
 void setup_monitor(void);
-void show_MinerScreen(unsigned long mElapsed);
-void show_ClockScreen(unsigned long mElapsed);
-void show_GlobalHashScreen(unsigned long mElapsed);
-void changeScreen(void);
+
+mining_data getMiningData(unsigned long mElapsed);
+clock_data getClockData(unsigned long mElapsed);
+coin_data getCoinData(unsigned long mElapsed);
+pool_data getPoolData(void);
+
+clock_data_t getClockData_t(unsigned long mElapsed);
+
 
 #endif //MONITOR_API_H

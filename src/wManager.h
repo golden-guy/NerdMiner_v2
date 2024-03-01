@@ -1,8 +1,8 @@
-//Botón configuración
-#define PIN_BUTTON_1 0
-#define PIN_BUTTON_2 14
-#define PIN_ENABLE5V 15
+#ifndef _WMANAGER_H
+#define _WMANAGER_H
 
 void init_WifiManager();
 void wifiManagerProcess();
-void reset_configurations();
+void reset_configuration();
+
+#endif // _WMANAGER_H
