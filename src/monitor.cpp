@@ -3,6 +3,7 @@
 #include "mbedtls/md.h"
 #include "HTTPClient.h"
 #include <NTPClient.h>
+#include <time.h>
 #include <WiFiUdp.h>
 #include "mining.h"
 #include "utils.h"
@@ -26,8 +27,12 @@ extern monitor_data mMonitor;
 //from saved config
 extern TSettings Settings; 
 
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
+//WiFiUDP ntpUDP;
+//NTPClient timeClient(ntpUDP, Settings.NTPAddress.c_str(), 3600, 60000);
+//Current time
+time_t now;
+tm timeInfo;
+
 unsigned int bitcoin_price=0;
 String current_block = "793261";
 global_data gData;
@@ -35,14 +40,14 @@ pool_data pData;
 
 void setup_monitor(void){
     /******** TIME ZONE SETTING *****/
-
-    timeClient.begin();
+    configTzTime(MY_TZ, "pool.ntp.org", Settings.NTPAddress.c_str());
+    //timeClient.begin();
     
     // Adjust offset depending on your zone
     // GMT +2 in seconds (zona horaria de Europa Central)
-    timeClient.setTimeOffset(3600 * Settings.Timezone);
+    //timeClient.setTimeOffset(3600 * Settings.Timezone);
 
-    Serial.println("TimeClient setup done");    
+    Serial.println("NTP setup done.");
 }
 
 unsigned long mGlobalUpdate =0;
@@ -174,7 +179,7 @@ unsigned long initialTime = 0;
 unsigned long mPoolUpdate = 0;
 
 void getTime(unsigned long* currentHours, unsigned long* currentMinutes, unsigned long* currentSeconds){
-  
+/*
   //Check if need an NTP call to check current time
   if((mTriggerUpdate == 0) || (millis() - mTriggerUpdate > UPDATE_PERIOD_h * 60 * 60 * 1000)){ //60 sec. * 60 min * 1000ms
     if(WiFi.status() == WL_CONNECTED) {
@@ -183,7 +188,12 @@ void getTime(unsigned long* currentHours, unsigned long* currentMinutes, unsigne
         Serial.print("TimeClient NTPupdateTime ");
     }
   }
+*/
+  //Get current time
+  time(&now);
+  localtime_r(&now, &timeInfo);
 
+/*
   unsigned long elapsedTime = (millis() - mTriggerUpdate) / 1000; // Tiempo transcurrido en segundos
   unsigned long currentTime = initialTime + elapsedTime; // La hora actual
 
@@ -191,22 +201,29 @@ void getTime(unsigned long* currentHours, unsigned long* currentMinutes, unsigne
   *currentHours = currentTime % 86400 / 3600;
   *currentMinutes = currentTime % 3600 / 60;
   *currentSeconds = currentTime % 60;
+*/
+  *currentHours = timeInfo.tm_hour;
+  *currentMinutes = timeInfo.tm_min;
+  *currentSeconds = timeInfo.tm_sec;
 }
 
 String getDate(){
-  
+/*
   unsigned long elapsedTime = (millis() - mTriggerUpdate) / 1000; // Tiempo transcurrido en segundos
   unsigned long currentTime = initialTime + elapsedTime; // La hora actual
 
   // Convierte la hora actual (epoch time) en una estructura tm
   struct tm *tm = localtime((time_t *)&currentTime);
-
   int year = tm->tm_year + 1900; // tm_year es el número de años desde 1900
   int month = tm->tm_mon + 1;    // tm_mon es el mes del año desde 0 (enero) hasta 11 (diciembre)
   int day = tm->tm_mday;         // tm_mday es el día del mes
+*/
+  int year = timeInfo.tm_year + 1900;
+  int month = timeInfo.tm_mon + 1;
+  int day = timeInfo.tm_mday;
 
   char currentDate[20];
-  sprintf(currentDate, "%02d/%02d/%04d", tm->tm_mday, tm->tm_mon + 1, tm->tm_year + 1900);
+  sprintf(currentDate, "%02d/%02d/%04d", day, month, year);
 
   return String(currentDate);
 }

@@ -34,6 +34,9 @@
 #define NEXT_HALVING_EVENT 840000
 #define HALVING_BLOCKS 210000
 
+//Timezone
+#define MY_TZ "CET-1CEST,M3.5.0/02,M10.5.0/03"
+
 enum NMState {
   NM_waitingConfig,
   NM_Connecting,
