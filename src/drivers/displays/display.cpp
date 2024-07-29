@@ -77,6 +77,12 @@ void resetToFirstScreen()
   currentDisplayDriver->current_cyclic_screen = 0;
 }
 
+// Set the initial screen
+void setInitialScreen(unsigned int screenId)
+{
+  currentDisplayDriver->current_cyclic_screen = screenId;
+}
+
 // Switches to the next cyclic screen without drawing it
 void switchToNextScreen()
 {

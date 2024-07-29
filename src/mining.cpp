@@ -407,7 +407,8 @@ void runMonitor(void *name)
 
   unsigned long mLastCheck = 0;
 
-  resetToFirstScreen();
+  //resetToFirstScreen();
+  setInitialScreen(SCREEN_CLOCK);
 
   unsigned long frame = 0;
 

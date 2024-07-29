@@ -17,8 +17,8 @@ OpenFontRender render;
 TFT_eSPI tft = TFT_eSPI();                  // Invoke library, pins defined in User_Setup.h
 TFT_eSprite background = TFT_eSprite(&tft); // Invoke library sprite
 
-//screen brightness
-byte brightness = 255;
+//set screen brightness to 170
+byte brightness = 170;
 
 void tDisplay_Init(void)
 {
@@ -28,6 +28,8 @@ void tDisplay_Init(void)
   #else
   tft.setRotation(1);
   #endif
+  //set screen brightness to 170
+  analogWrite(TFT_BL, brightness);
   tft.setSwapBytes(true);                 // Swap the colour byte order when rendering
   background.createSprite(WIDTH, HEIGHT); // Background Sprite
   background.setSwapBytes(true);
@@ -143,6 +145,13 @@ void tDisplay_ClockScreen(unsigned long mElapsed)
   background.setTextColor(0xDEDB, TFT_BLACK);
 
   background.drawString(data.currentTime.c_str(), 130, 50, GFXFF);
+
+  // Print Date
+  background.setFreeFont(FSSB9);
+  background.setTextSize(1);
+  background.setTextColor(0xDEDB, TFT_BLACK);
+
+  background.drawString(data.currentDate.c_str(), 170, 110, GFXFF);
 
   // Push prepared background to screen
   background.pushSprite(0, 0);
