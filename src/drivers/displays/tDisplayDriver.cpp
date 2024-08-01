@@ -144,14 +144,14 @@ void tDisplay_ClockScreen(unsigned long mElapsed)
   background.setTextSize(2);
   background.setTextColor(0xDEDB, TFT_BLACK);
 
-  background.drawString(data.currentTime.c_str(), 130, 50, GFXFF);
+  background.drawString(data.currentTime.c_str(), 130, 40, GFXFF);
 
   // Print Date
-  background.setFreeFont(FSSB9);
+  background.setFreeFont(FF22);
   background.setTextSize(1);
   background.setTextColor(0xDEDB, TFT_BLACK);
 
-  background.drawString(data.currentDate.c_str(), 170, 110, GFXFF);
+  background.drawString(data.currentDate.c_str(), 155, 105, GFXFF);
 
   // Push prepared background to screen
   background.pushSprite(0, 0);
