@@ -16,6 +16,9 @@
 #include "mining.h"
 #include "timeconst.h"
 
+#include <ArduinoJson.h>
+#include <esp_flash.h>
+
 
 // Flag for saving data
 bool shouldSaveConfig = false;
@@ -30,6 +33,63 @@ extern monitor_data mMonitor;
 nvMemory nvMem;
 
 extern SDCard SDCrd;
+
+String readCustomAPName() {
+    Serial.println("DEBUG: Attempting to read custom AP name from flash at 0x3F0000...");
+    
+    // Leer directamente desde flash
+    const size_t DATA_SIZE = 128;
+    uint8_t buffer[DATA_SIZE];
+    memset(buffer, 0, DATA_SIZE); // Clear buffer
+    
+    // Leer desde 0x3F0000
+    esp_err_t result = esp_flash_read(NULL, buffer, 0x3F0000, DATA_SIZE);
+    if (result != ESP_OK) {
+        Serial.printf("DEBUG: Flash read error: %s\n", esp_err_to_name(result));
+        return "";
+    }
+    
+    Serial.println("DEBUG: Successfully read from flash");
+    String data = String((char*)buffer);
+    
+    // Debug: show raw data read
+    Serial.printf("DEBUG: Raw flash data: '%s'\n", data.c_str());
+    
+    if (data.startsWith("WEBFLASHER_CONFIG:")) {
+        Serial.println("DEBUG: Found WEBFLASHER_CONFIG marker");
+        String jsonPart = data.substring(18); // Después del marcador "WEBFLASHER_CONFIG:"
+        
+        Serial.printf("DEBUG: JSON part: '%s'\n", jsonPart.c_str());
+        
+        DynamicJsonDocument doc(256);
+        DeserializationError error = deserializeJson(doc, jsonPart);
+        
+        if (error == DeserializationError::Ok) {
+            Serial.println("DEBUG: JSON parsed successfully");
+            
+            if (doc.containsKey("apname")) {
+                String customAP = doc["apname"].as<String>();
+                customAP.trim();
+                
+                if (customAP.length() > 0 && customAP.length() < 32) {
+                    Serial.printf("✅ Custom AP name from webflasher: %s\n", customAP.c_str());
+                    return customAP;
+                } else {
+                    Serial.printf("DEBUG: AP name invalid length: %d\n", customAP.length());
+                }
+            } else {
+                Serial.println("DEBUG: 'apname' key not found in JSON");
+            }
+        } else {
+            Serial.printf("DEBUG: JSON parse error: %s\n", error.c_str());
+        }
+    } else {
+        Serial.println("DEBUG: WEBFLASHER_CONFIG marker not found - no custom config");
+    }
+    
+    Serial.println("DEBUG: Using default AP name");
+    return "";
+}
 
 void saveConfigCallback()
 // Callback notifying us of the need to save configuration
@@ -76,6 +136,10 @@ void init_WifiManager()
     Serial.begin(115200);
 #endif //MONITOR_SPEED
     //Serial.setTxTimeoutMs(10);
+    
+    // Check for custom AP name from flasher config, otherwise use default
+    String customAPName = readCustomAPName();
+    const char* apName = customAPName.length() > 0 ? customAPName.c_str() : DEFAULT_SSID;
 
     //Init pin 15 to eneble 5V external power (LilyGo bug)
 #ifdef PIN_ENABLE5V
@@ -179,7 +243,7 @@ void init_WifiManager()
   wm.addParameter(&time_text_box_num);
   wm.addParameter(&features_html);
   wm.addParameter(&save_stats_to_nvs);
-  #ifdef ESP32_2432S028R
+  #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
   char checkboxParams2[24] = "type=\"checkbox\"";
   if (Settings.invertColors)
   {
@@ -187,6 +251,13 @@ void init_WifiManager()
   }
   WiFiManagerParameter invertColors("inverColors", "Invert Display Colors (if the colors looks weird)", "T", 2, checkboxParams2, WFM_LABEL_AFTER);
   wm.addParameter(&invertColors);
+  #endif
+  #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
+    char brightnessConvValue[2];
+    sprintf(brightnessConvValue, "%d", Settings.Brightness);
+    // Text box (Number) - 3 characters maximum
+    WiFiManagerParameter brightness_text_box_num("Brightness", "Screen backlight Duty Cycle (0-255)", brightnessConvValue, 3);
+    wm.addParameter(&brightness_text_box_num);
   #endif
 
     Serial.println("AllDone: ");
@@ -197,7 +268,9 @@ void init_WifiManager()
         wm.setConfigPortalBlocking(true); //Hacemos que el portal SI bloquee el firmware
         drawSetupScreen();
         mMonitor.NerdStatus = NM_Connecting;
-        if (!wm.startConfigPortal(DEFAULT_SSID, DEFAULT_WIFIPW))
+        wm.startConfigPortal(apName, DEFAULT_WIFIPW);
+
+        if (shouldSaveConfig)
         {
             //Could be break forced after edditing, so save new config
             Serial.println("failed to connect and hit timeout");
@@ -208,8 +281,11 @@ void init_WifiManager()
             Settings.Timezone = atoi(time_text_box_num.getValue());
             //Serial.println(save_stats_to_nvs.getValue());
             Settings.saveStats = (strncmp(save_stats_to_nvs.getValue(), "T", 1) == 0);
-            #ifdef ESP32_2432S028R
+            #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
                 Settings.invertColors = (strncmp(invertColors.getValue(), "T", 1) == 0);
+            #endif
+            #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
+                Settings.Brightness = atoi(brightness_text_box_num.getValue());
             #endif
             nvMem.saveConfig(&Settings);
             delay(3*SECOND_MS);
@@ -226,7 +302,7 @@ void init_WifiManager()
         wm.setConfigPortalBlocking(true);
         wm.setEnableConfigPortal(true);
         // if (!wm.autoConnect(Settings.WifiSSID.c_str(), Settings.WifiPW.c_str()))
-        if (!wm.autoConnect(DEFAULT_SSID, DEFAULT_WIFIPW))
+        if (!wm.autoConnect(apName, DEFAULT_WIFIPW))
         {
             Serial.println("Failed to connect to configured WIFI, and hit timeout");
             if (shouldSaveConfig) {
@@ -238,8 +314,11 @@ void init_WifiManager()
                 Settings.Timezone = atoi(time_text_box_num.getValue());
                 // Serial.println(save_stats_to_nvs.getValue());
                 Settings.saveStats = (strncmp(save_stats_to_nvs.getValue(), "T", 1) == 0);
-                #ifdef ESP32_2432S028R
+                #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
                 Settings.invertColors = (strncmp(invertColors.getValue(), "T", 1) == 0);
+                #endif
+                #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
+                Settings.Brightness = atoi(brightness_text_box_num.getValue());
                 #endif
                 nvMem.saveConfig(&Settings);
                 vTaskDelay(2000 / portTICK_PERIOD_MS);      
@@ -255,6 +334,7 @@ void init_WifiManager()
         Serial.println("WiFi connected");
         Serial.print("IP address: ");
         Serial.println(WiFi.localIP());
+
 
         // Lets deal with the user config values
 
@@ -284,20 +364,63 @@ void init_WifiManager()
         Serial.print("TimeZone fromUTC: ");
         Serial.println(Settings.Timezone);
 
-        #ifdef ESP32_2432S028R
+        #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
         Settings.invertColors = (strncmp(invertColors.getValue(), "T", 1) == 0);
         Serial.print("Invert Colors: ");
         Serial.println(Settings.invertColors);        
         #endif
 
+        #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
+        Settings.Brightness = atoi(brightness_text_box_num.getValue());
+        Serial.print("Brightness: ");
+        Serial.println(Settings.Brightness);
+        #endif
+
     }
+
+    // Lets deal with the user config values
+
+    // Copy the string value
+    Settings.PoolAddress = pool_text_box.getValue();
+    //strncpy(Settings.PoolAddress, pool_text_box.getValue(), sizeof(Settings.PoolAddress));
+    Serial.print("PoolString: ");
+    Serial.println(Settings.PoolAddress);
+
+    //Convert the number value
+    Settings.PoolPort = atoi(port_text_box_num.getValue());
+    Serial.print("portNumber: ");
+    Serial.println(Settings.PoolPort);
+
+    // Copy the string value
+    strncpy(Settings.PoolPassword, password_text_box.getValue(), sizeof(Settings.PoolPassword));
+    Serial.print("poolPassword: ");
+    Serial.println(Settings.PoolPassword);
+
+    // Copy the string value
+    strncpy(Settings.BtcWallet, addr_text_box.getValue(), sizeof(Settings.BtcWallet));
+    Serial.print("btcString: ");
+    Serial.println(Settings.BtcWallet);
+
+    //Convert the number value
+    Settings.Timezone = atoi(time_text_box_num.getValue());
+    Serial.print("TimeZone fromUTC: ");
+    Serial.println(Settings.Timezone);
+
+    #ifdef ESP32_2432S028R
+    Settings.invertColors = (strncmp(invertColors.getValue(), "T", 1) == 0);
+    Serial.print("Invert Colors: ");
+    Serial.println(Settings.invertColors);
+    #endif
 
     // Save the custom parameters to FS
     if (shouldSaveConfig)
     {
         nvMem.saveConfig(&Settings);
-        #ifdef ESP32_2432S028R
+        #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
          if (Settings.invertColors) ESP.restart();                
+        #endif
+        #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
+        if (Settings.Brightness != 250) ESP.restart();
         #endif
     }
 }

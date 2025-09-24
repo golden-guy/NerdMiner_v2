@@ -4,10 +4,12 @@
 #include "HTTPClient.h"
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <list>
 #include "mining.h"
 #include "utils.h"
 #include "monitor.h"
 #include "drivers/storage/storage.h"
+#include "drivers/devices/device.h"
 
 extern uint32_t templates;
 extern uint32_t hashes;
@@ -33,6 +35,8 @@ unsigned int bitcoin_price=0;
 String current_block = "793261";
 global_data gData;
 pool_data pData;
+String poolAPIUrl;
+
 
 void setup_monitor(void){
     /******** TIME ZONE SETTING *****/
@@ -42,7 +46,12 @@ void setup_monitor(void){
     // Adjust offset depending on your zone
     // GMT +2 in seconds (zona horaria de Europa Central)
     timeClient.setTimeOffset(3600 * Settings.Timezone);
-    Serial.println("TimeClient setup done");    
+
+    Serial.println("TimeClient setup done");
+#ifdef SCREEN_WORKERS_ENABLE
+    poolAPIUrl = getPoolAPIUrl();
+    Serial.println("poolAPIUrl: " + poolAPIUrl);
+#endif
 }
 
 unsigned long mGlobalUpdate =0;
@@ -55,6 +64,7 @@ void updateGlobalData(void){
             
         //Make first API call to get global hash and current difficulty
         HTTPClient http;
+        http.setTimeout(10000);
         try {
         http.begin(getGlobalHash);
         int httpCode = http.GET();
@@ -62,7 +72,7 @@ void updateGlobalData(void){
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
             
-            DynamicJsonDocument doc(1024);
+            StaticJsonDocument<1024> doc;
             deserializeJson(doc, payload);
             String temp = "";
             if (doc.containsKey("currentHashrate")) temp = String(doc["currentHashrate"].as<float>());
@@ -87,11 +97,11 @@ void updateGlobalData(void){
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
             
-            DynamicJsonDocument doc(1024);
+            StaticJsonDocument<1024> doc;
             deserializeJson(doc, payload);
             String temp = "";
             if (doc.containsKey("halfHourFee")) gData.halfHourFee = doc["halfHourFee"].as<int>();
-#ifdef NERDMINER_T_HMI
+#ifdef SCREEN_FEES_ENABLE
             if (doc.containsKey("fastestFee"))  gData.fastestFee = doc["fastestFee"].as<int>();
             if (doc.containsKey("hourFee"))     gData.hourFee = doc["hourFee"].as<int>();
             if (doc.containsKey("economyFee"))  gData.economyFee = doc["economyFee"].as<int>();
@@ -104,6 +114,7 @@ void updateGlobalData(void){
         
         http.end();
         } catch(...) {
+          Serial.println("Global data HTTP error caught");
           http.end();
         }
     }
@@ -118,6 +129,7 @@ String getBlockHeight(void){
         if (WiFi.status() != WL_CONNECTED) return current_block;
             
         HTTPClient http;
+        http.setTimeout(10000);
         try {
         http.begin(getHeightAPI);
         int httpCode = http.GET();
@@ -132,6 +144,7 @@ String getBlockHeight(void){
         }        
         http.end();
         } catch(...) {
+          Serial.println("Height HTTP error caught");
           http.end();
         }
     }
@@ -145,9 +158,16 @@ String getBTCprice(void){
     
     if((mBTCUpdate == 0) || (millis() - mBTCUpdate > UPDATE_BTC_min * 60 * 1000)){
     
-        if (WiFi.status() != WL_CONNECTED) return (String(bitcoin_price) + "$");
+        if (WiFi.status() != WL_CONNECTED) {
+            static char price_buffer[16];
+            snprintf(price_buffer, sizeof(price_buffer), "$%u", bitcoin_price);
+            return String(price_buffer);
+        }
         
         HTTPClient http;
+        http.setTimeout(10000);
+        bool priceUpdated = false;
+
         try {
         http.begin(getBTCAPI);
         int httpCode = http.GET();
@@ -155,9 +175,12 @@ String getBTCprice(void){
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
 
-            DynamicJsonDocument doc(1024);
+            StaticJsonDocument<1024> doc;
             deserializeJson(doc, payload);
-            if (doc.containsKey("last_trade_price")) bitcoin_price = doc["last_trade_price"];
+          
+            if (doc.containsKey("bitcoin") && doc["bitcoin"].containsKey("usd")) {
+                bitcoin_price = doc["bitcoin"]["usd"];
+            }
 
             doc.clear();
 
@@ -166,11 +189,14 @@ String getBTCprice(void){
         
         http.end();
         } catch(...) {
+          Serial.println("BTC price HTTP error caught");
           http.end();
         }
-    }
+    }  
   
-  return (String(bitcoin_price) + "$");
+  static char price_buffer[16];
+  snprintf(price_buffer, sizeof(price_buffer), "$%u", bitcoin_price);
+  return String(price_buffer);
 }
 
 unsigned long mTriggerUpdate = 0;
@@ -227,9 +253,69 @@ String getTime(void){
   return LocalHour;
 }
 
+enum EHashRateScale
+{
+  HashRateScale_99KH,
+  HashRateScale_999KH,
+  HashRateScale_9MH
+};
+
+static EHashRateScale s_hashrate_scale = HashRateScale_99KH;
+static uint32_t s_skip_first = 3;
+static double s_top_hashrate = 0.0;
+
+static std::list<double> s_hashrate_avg_list;
+static double s_hashrate_summ = 0.0;
+static uint8_t s_hashrate_recalc = 0;
+
 String getCurrentHashRate(unsigned long mElapsed)
 {
-  return String((1.0 * (elapsedKHs * 1000)) / mElapsed, 2);
+  double hashrate = (double)elapsedKHs * 1000.0 / (double)mElapsed;
+
+  s_hashrate_summ += hashrate;
+  s_hashrate_avg_list.push_back(hashrate);
+  if (s_hashrate_avg_list.size() > 10)
+  {
+    s_hashrate_summ -= s_hashrate_avg_list.front();
+    s_hashrate_avg_list.pop_front();
+  }
+
+  ++s_hashrate_recalc;
+  if (s_hashrate_recalc == 0)
+  {
+    s_hashrate_summ = 0.0;
+    for (auto itt = s_hashrate_avg_list.begin(); itt != s_hashrate_avg_list.end(); ++itt)
+      s_hashrate_summ += *itt;
+  }
+
+  double avg_hashrate = s_hashrate_summ / (double)s_hashrate_avg_list.size();
+  if (avg_hashrate < 0.0)
+    avg_hashrate = 0.0;
+
+  if (s_skip_first > 0)
+  {
+    s_skip_first--;
+  } else
+  {
+    if (avg_hashrate > s_top_hashrate)
+    {
+      s_top_hashrate = avg_hashrate;
+      if (avg_hashrate > 999.9)
+        s_hashrate_scale = HashRateScale_9MH;
+      else if (avg_hashrate > 99.9)
+        s_hashrate_scale = HashRateScale_999KH;
+    }
+  }
+
+  switch (s_hashrate_scale)
+  {
+    case HashRateScale_99KH:
+      return String(avg_hashrate, 2);
+    case HashRateScale_999KH:
+      return String(avg_hashrate, 1);
+    default:
+      return String((int)avg_hashrate );
+  }
 }
 
 mining_data getMiningData(unsigned long mElapsed)
@@ -240,11 +326,13 @@ mining_data getMiningData(unsigned long mElapsed)
   suffix_string(best_diff, best_diff_string, 16, 0);
 
   char timeMining[15] = {0};
-  uint64_t secElapsed = upTime + (esp_timer_get_time() / 1000000);
-  int days = secElapsed / 86400;
-  int hours = (secElapsed - (days * 86400)) / 3600;               // Number of seconds in an hour
-  int mins = (secElapsed - (days * 86400) - (hours * 3600)) / 60; // Remove the number of hours and calculate the minutes.
-  int secs = secElapsed - (days * 86400) - (hours * 3600) - (mins * 60);
+  uint64_t tm = upTime;
+  int secs = tm % 60;
+  tm /= 60;
+  int mins = tm % 60;
+  tm /= 60;
+  int hours = tm % 24;
+  int days = tm / 24;
   sprintf(timeMining, "%01d  %02d:%02d:%02d", days, hours, mins, secs);
 
   data.completedShares = shares;
@@ -298,7 +386,7 @@ coin_data getCoinData(unsigned long mElapsed)
   data.currentHashRate = getCurrentHashRate(mElapsed);
   data.btcPrice = getBTCprice();
   data.currentTime = getTime();
-#ifdef NERDMINER_T_HMI
+#ifdef SCREEN_FEES_ENABLE
   data.hourFee = String(gData.hourFee);
   data.fastestFee = String(gData.fastestFee);
   data.economyFee = String(gData.economyFee);
@@ -317,23 +405,54 @@ coin_data getCoinData(unsigned long mElapsed)
   return data;
 }
 
+String getPoolAPIUrl(void) {
+    poolAPIUrl = String(getPublicPool);
+    if (Settings.PoolAddress == "public-pool.io") {
+        poolAPIUrl = "https://public-pool.io:40557/api/client/";
+    } 
+    else {
+        if (Settings.PoolAddress == "pool.nerdminers.org") {
+            poolAPIUrl = "https://pool.nerdminers.org/users/";
+        }
+        else {
+            switch (Settings.PoolPort) {
+                case 3333:
+                    if (Settings.PoolAddress == "pool.sethforprivacy.com")
+                        poolAPIUrl = "https://pool.sethforprivacy.com/api/client/";
+                    if (Settings.PoolAddress == "pool.solomining.de")
+                        poolAPIUrl = "https://pool.solomining.de/api/client/";
+                    // Add more cases for other addresses with port 3333 if needed
+                    break;
+                case 2018:
+                    // Local instance of public-pool.io on Umbrel or Start9
+                    poolAPIUrl = "http://" + Settings.PoolAddress + ":2019/api/client/";
+                    break;
+                default:
+                    poolAPIUrl = String(getPublicPool);
+                    break;
+            }
+        }
+    }
+    return poolAPIUrl;
+}
+
 pool_data getPoolData(void){
     //pool_data pData;    
     if((mPoolUpdate == 0) || (millis() - mPoolUpdate > UPDATE_POOL_min * 60 * 1000)){      
         if (WiFi.status() != WL_CONNECTED) return pData;            
         //Make first API call to get global hash and current difficulty
         HTTPClient http;
-        http.setReuse(true);        
+        http.setTimeout(10000);        
         try {          
           String btcWallet = Settings.BtcWallet;
           // Serial.println(btcWallet);
           if (btcWallet.indexOf(".")>0) btcWallet = btcWallet.substring(0,btcWallet.indexOf("."));
-          if (Settings.PoolAddress == "tn.vkbit.com") {
-            http.begin("https://testnet.vkbit.com/miner/"+btcWallet);
-            // Serial.println("https://testnet.vkbit.com/miner/"+btcWallet);
-          } else {
-            http.begin(String(getPublicPool)+btcWallet);
-          }
+#ifdef SCREEN_WORKERS_ENABLE
+          Serial.println("Pool API : " + poolAPIUrl+btcWallet);
+          http.begin(poolAPIUrl+btcWallet);
+#else
+          http.begin(String(getPublicPool)+btcWallet);
+#endif
           int httpCode = http.GET();
           if (httpCode == HTTP_CODE_OK) {
               String payload = http.getString();
@@ -343,7 +462,7 @@ pool_data getPoolData(void){
               filter["workersCount"] = true;
               filter["workers"][0]["sessionId"] = true;
               filter["workers"][0]["hashRate"] = true;
-              DynamicJsonDocument doc(2048);
+              StaticJsonDocument<2048> doc;
               deserializeJson(doc, payload, DeserializationOption::Filter(filter));
               //Serial.println(serializeJsonPretty(doc, Serial));
               if (doc.containsKey("workersCount")) pData.workersCount = doc["workersCount"].as<int>();

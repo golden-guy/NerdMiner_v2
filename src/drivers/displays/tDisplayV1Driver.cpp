@@ -67,14 +67,12 @@ void tDisplay_MinerScreen(unsigned long mElapsed)
   render.rdrawString(data.currentHashRate.c_str(), 96, 90, TFT_BLACK);
   // Total hashes
   render.setFontSize(13);
-  render.rdrawString(data.totalMHashes.c_str(), 200, 112, TFT_BLACK);
+  render.rdrawString(data.totalMHashes.c_str(), 200, 106, TFT_BLACK);
   // Block templates
-  render.setFontSize(13);
   render.drawString(data.templates.c_str(), 140, 15, 0xDEDB);
   // Best diff
   render.drawString(data.bestDiff.c_str(), 140, 38, 0xDEDB);
   // 32Bit shares
-  render.setFontSize(13);
   render.drawString(data.completedShares.c_str(), 140, 60, 0xDEDB);
   // Hores
   render.setFontSize(9);
@@ -208,7 +206,7 @@ void tDisplay_BTCprice(unsigned long mElapsed)
 
   // Hashrate
   render.setFontSize(25);
-  render.setCursor(19, 122);
+  render.setCursor(19, 120);
   render.setFontColor(TFT_BLACK);
   render.rdrawString(data.currentHashRate.c_str(), 70, 103, TFT_BLACK);
 
@@ -224,11 +222,11 @@ void tDisplay_BTCprice(unsigned long mElapsed)
   background.drawString(data.currentTime.c_str(), 148, 1, GFXFF);
 
   // Print BTC Price 
-  background.setFreeFont(FF24);
-  background.setTextDatum(TR_DATUM);
+  background.setFreeFont(FF23);
+  background.setTextDatum(TL_DATUM);
   background.setTextSize(1);
   background.setTextColor(0xDEDB, TFT_BLACK);
-  background.drawString(data.btcPrice.c_str(), 70, 25, GFXFF);
+  background.drawString(data.btcPrice.c_str(), 82, 50, GFXFF);
 
   // Push prepared background to screen
   background.pushSprite(0, 0);
@@ -255,7 +253,7 @@ void tDisplay_DoLedStuff(unsigned long frame)
 {
 }
 
-CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_ClockScreen, tDisplay_GlobalHashScreen};
+CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_ClockScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice};
 
 DisplayDriver tDisplayV1Driver = {
     tDisplay_Init,
